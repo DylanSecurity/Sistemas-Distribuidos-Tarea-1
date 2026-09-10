@@ -1,49 +1,121 @@
-from fastapi import FastAPI
-import redis
-import json
 import time
+import json
+import redis
+from fastapi import FastAPI
+from app.scraper import (
+    obtener_q1_proximos_partidos,
+    obtener_q2_ultimos_partidos,
+    obtener_q3_historial,
+    obtener_q4_periodo,
+    obtener_q5_tabla_posiciones
+)
+from app.metrics import registrar_hit, registrar_miss, registrar_latencia
 
-app = FastAPI(title="API Futbol Chileno - Sistema de Cache")
+app = FastAPI(title="Plataforma de Futbol Chileno - All you can Cache", version="1.0")
 
-#Conexion a Redis local
-cache = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+import os
+r = redis.Redis(host=os.getenv("REDIS_HOST", "localhost"), port=6379, db=0, decode_responses=True)
 
-def scraper_obtener_proximos_partidos(team_id: str):
-    # Simula la latencia del scraper
-    time.sleep(2)
-    return {
-        "equipo": team_id,
-        "proximo_partido": "Universidad de Chile vs Colo-Colo",
-        "fecha": "2026-10-15",
-        "hora": "15:00"
-    }
+TTL_SEGUNDOS = 60
 
-@app.get("/")
-def leer_raiz():
-    return {"mensaje": "Bienvenido a la API del Futbol Chileno"}
-
-@app.get("/q1/{team_id}")
-def consulta_q1(team_id: str):
-    cache_key = f"q1:team:{team_id}"
-
-#Busca en cache
-    cached_data = cache.get(cache_key)
-
+@app.get("/q1/{equipo}")
+async def q1_proximos_partidos(equipo: str):
+    start_time = time.time()
+    cache_key = f"q1:{equipo.lower()}"
+    cached_data = r.get(cache_key)
+    
     if cached_data:
-        return {
-            "origen": "CACHE (Hit)",
-            "datos": json.loads(cached_data)
-        }
+        registrar_hit()
+        latencia = (time.time() - start_time) * 1000
+        registrar_latencia(latencia)
+        return {"origen": "CACHE (Hit)", "datos": json.loads(cached_data)}
+    
+    datos = await obtener_q1_proximos_partidos(equipo)
+    r.setex(cache_key, TTL_SEGUNDOS, json.dumps(datos))
+    
+    registrar_miss()
+    latencia = (time.time() - start_time) * 1000
+    registrar_latencia(latencia)
+    return {"origen": "SCRAPER (Miss)", "datos": datos}
 
-    print(f"Cache miss para {team_id}. Consultando datos...")
+@app.get("/q2/{equipo}")
+async def q2_ultimos_partidos(equipo: str):
+    start_time = time.time()
+    cache_key = f"q2:{equipo.lower()}"
+    cached_data = r.get(cache_key)
+    
+    if cached_data:
+        registrar_hit()
+        latencia = (time.time() - start_time) * 1000
+        registrar_latencia(latencia)
+        return {"origen": "CACHE (Hit)", "datos": json.loads(cached_data)}
+    
+    datos = await obtener_q2_ultimos_partidos(equipo)
+    r.setex(cache_key, TTL_SEGUNDOS, json.dumps(datos))
+    
+    registrar_miss()
+    latencia = (time.time() - start_time) * 1000
+    registrar_latencia(latencia)
+    return {"origen": "SCRAPER (Miss)", "datos": datos}
 
-#Obtiene datos nuevos
-    nueva_data = scraper_obtener_proximos_partidos(team_id)
+@app.get("/q3/{equipo1}/{equipo2}")
+async def q3_historial_enfrentamientos(equipo1: str, equipo2: str):
+    start_time = time.time()
+    # Ordenamos equipos para que la llave sea la misma sin importar el orden
+    equipos = sorted([equipo1.lower(), equipo2.lower()])
+    cache_key = f"q3:{equipos[0]}:vs:{equipos[1]}"
+    
+    cached_data = r.get(cache_key)
+    if cached_data:
+        registrar_hit()
+        latencia = (time.time() - start_time) * 1000
+        registrar_latencia(latencia)
+        return {"origen": "CACHE (Hit)", "datos": json.loads(cached_data)}
+    
+    datos = await obtener_q3_historial(equipo1, equipo2)
+    r.setex(cache_key, TTL_SEGUNDOS, json.dumps(datos))
+    
+    registrar_miss()
+    latencia = (time.time() - start_time) * 1000
+    registrar_latencia(latencia)
+    return {"origen": "SCRAPER (Miss)", "datos": datos}
 
-#Guarda en cache con TTL de 60 segundos
-    cache.setex(name=cache_key, time=60, value=json.dumps(nueva_data))
+@app.get("/q4/{fecha_inicio}/{fecha_fin}")
+async def q4_partidos_periodo(fecha_inicio: str, fecha_fin: str):
+    start_time = time.time()
+    cache_key = f"q4:{fecha_inicio}:{fecha_fin}"
+    cached_data = r.get(cache_key)
+    
+    if cached_data:
+        registrar_hit()
+        latencia = (time.time() - start_time) * 1000
+        registrar_latencia(latencia)
+        return {"origen": "CACHE (Hit)", "datos": json.loads(cached_data)}
+    
+    datos = await obtener_q4_periodo(fecha_inicio, fecha_fin)
+    r.setex(cache_key, TTL_SEGUNDOS, json.dumps(datos))
+    
+    registrar_miss()
+    latencia = (time.time() - start_time) * 1000
+    registrar_latencia(latencia)
+    return {"origen": "SCRAPER (Miss)", "datos": datos}
 
-    return {
-        "origen": "SCRAPER (Miss)",
-        "datos": nueva_data
-    }
+@app.get("/q5")
+async def q5_tabla_posiciones():
+    start_time = time.time()
+    cache_key = "q5:tabla_posiciones"
+    cached_data = r.get(cache_key)
+    
+    if cached_data:
+        registrar_hit()
+        latencia = (time.time() - start_time) * 1000
+        registrar_latencia(latencia)
+        return {"origen": "CACHE (Hit)", "datos": json.loads(cached_data)}
+    
+    datos = await obtener_q5_tabla_posiciones()
+    r.setex(cache_key, TTL_SEGUNDOS, json.dumps(datos))
+    
+    registrar_miss()
+    latencia = (time.time() - start_time) * 1000
+    registrar_latencia(latencia)
+    return {"origen": "SCRAPER (Miss)", "datos": datos}
