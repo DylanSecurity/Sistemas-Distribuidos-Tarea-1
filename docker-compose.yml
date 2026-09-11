@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+    environment:
+      - REDIS_HOST=redis
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    # Agregamos esta linea para controlar la memoria:
+    command: redis-server --maxmemory 2mb --maxmemory-policy allkeys-lru
