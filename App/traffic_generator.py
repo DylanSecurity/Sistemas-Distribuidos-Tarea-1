@@ -32,9 +32,12 @@ async def generador_uniforme():
         tareas = []
         for i in range(TOTAL_REQUESTS):
             equipo = random.choice(EQUIPOS)
-            tareas.append(realizar_consulta(client, equipo, i))
+            tarea = asyncio.create_task(realizar_consulta(client, equipo, i))
+            tareas.append(tarea)
+            # Pausa de 50ms para evitar la estampida de caché
+            await asyncio.sleep(0.05) 
         
-        # Ejecutar todas las consultas en paralelo
+        # Ejecutar todas las consultas
         await asyncio.gather(*tareas)
 
 async def generador_zipf():
@@ -52,7 +55,10 @@ async def generador_zipf():
         tareas = []
         for i, idx in enumerate(indices_ajustados):
             equipo = EQUIPOS[idx]
-            tareas.append(realizar_consulta(client, equipo, i))
+            tarea = asyncio.create_task(realizar_consulta(client, equipo, i))
+            tareas.append(tarea)
+            # Pausa de 50ms para evitar la estampida de caché
+            await asyncio.sleep(0.05)
         
         await asyncio.gather(*tareas)
 
@@ -60,13 +66,11 @@ async def main():
     print("Iniciando Generador de Trafico...")
     start_time = time.time()
     
-    # Uniforme
-    await generador_uniforme()
+    # --- EXPERIMENTO 1: UNIFORME ---
+    #await generador_uniforme()
     
-    # 3 segundos para respirar
-    await asyncio.sleep(3)
+    # --- EXPERIMENTO 2: ZIPF ---
     
-    # Zipf
     await generador_zipf()
     
     tiempo_total = time.time() - start_time
