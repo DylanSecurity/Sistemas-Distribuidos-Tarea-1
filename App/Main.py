@@ -17,7 +17,6 @@ import os
 r = redis.Redis(host=os.getenv("REDIS_HOST", "localhost"), port=6379, db=0, decode_responses=True)
 
 TTL_SEGUNDOS = 60
-
 @app.get("/q1/{equipo}")
 async def q1_proximos_partidos(equipo: str):
     start_time = time.time()
@@ -61,7 +60,7 @@ async def q2_ultimos_partidos(equipo: str):
 @app.get("/q3/{equipo1}/{equipo2}")
 async def q3_historial_enfrentamientos(equipo1: str, equipo2: str):
     start_time = time.time()
-    # Ordenamos equipos para que la llave sea la misma sin importar el orden
+    
     equipos = sorted([equipo1.lower(), equipo2.lower()])
     cache_key = f"q3:{equipos[0]}:vs:{equipos[1]}"
     
