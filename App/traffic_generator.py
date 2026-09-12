@@ -1,83 +1,219 @@
-import httpx
 import asyncio
-import random
-import numpy as np
 import time
+import httpx
+import numpy as np
+import subprocess
 
-# Lista de equipos de la Liga Chilena para simular consultas
+# Configuracion de URL y espacio de datos
+API_URL = "http://localhost:8000"
 EQUIPOS = [
-    "colo-colo", "universidad-de-chile", "universidad-catolica", "cobreloa",
-    "palestino", "union-espanola", "audax-italiano", "everton",
-    "cobresal", "coquimbo-unido", "ohiggins", "huachipato",
-    "deportes-iquique", "nublense", "union-la-calera", "deportes-copiapo"
+    "colo-colo",
+    "universidad-de-chile",
+    "universidad-catolica",
+    "coquimbo-unido",
+    "deportes-iquique",
+    "palestino",
+    "union-espanola",
+    "everton",
+    "universidad-de-concepcion",
+    "audax-italiano",
+    "nublense",
+    "cobresal",
+    "huachipato",
+    "cobreloa",
+    "deportes-copiapo",
+    "union-la-calera",
 ]
 
-API_BASE_URL = "http://127.0.0.1:8000"
-TOTAL_REQUESTS = 100  # Cantidad de consultas a simular
 
-async def realizar_consulta(client: httpx.AsyncClient, equipo: str, id_peticion: int):
-    """Ejecuta una peticion HTTP al endpoint Q1 de la API."""
-    url = f"{API_BASE_URL}/q1/{equipo}"
+def obtener_metricas_redis():
     try:
-        response = await client.get(url, timeout=5.0)
-        datos = response.json()
-        print(f"[{id_peticion}] Peticion a {equipo}: {datos.get('origen')}")
-    except Exception as e:
-        print(f"[{id_peticion}] Error conectando con API: {e}")
+        cmd = ["docker", "exec", "tarea1sistemasdistribuidos-redis-1", "redis-cli", "info", "stats"]
+        res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        stats = {}
+        for line in res.stdout.splitlines():
+            if ":" in line:
+                k, v = line.split(":", 1)
+                stats[k.strip()] = v.strip()
+        return int(stats.get("evicted_keys", 0)), int(stats.get("expired_keys", 0))
+    except Exception:
+        return 0, 0
 
-async def generador_uniforme():
-    """Simula trafico donde todos los equipos son consultados por igual."""
-    print("\n=== INICIANDO PRUEBA: DISTRIBUCION UNIFORME ===")
-    async with httpx.AsyncClient() as client:
-        tareas = []
-        for i in range(TOTAL_REQUESTS):
-            equipo = random.choice(EQUIPOS)
-            tarea = asyncio.create_task(realizar_consulta(client, equipo, i))
-            tareas.append(tarea)
-            # Pausa de 50ms para evitar la estampida de caché
-            await asyncio.sleep(0.05) 
-        
-        # Ejecutar todas las consultas
-        await asyncio.gather(*tareas)
 
-async def generador_zipf():
-    """Simula trafico donde pocos equipos reciben casi todas las consultas."""
-    print("\n=== INICIANDO PRUEBA: DISTRIBUCION ZIPF ===")
-    # numpy.random.zipf genera indices, a = 1.5 es el parametro de concentracion
-    a = 1.5
-    indices_zipf = np.random.zipf(a, TOTAL_REQUESTS)
-    
-    # Ajustamos los indices para que no superen la cantidad de equipos que tenemos
-    num_equipos = len(EQUIPOS)
-    indices_ajustados = [min(idx - 1, num_equipos - 1) for idx in indices_zipf]
-    
-    async with httpx.AsyncClient() as client:
-        tareas = []
-        for i, idx in enumerate(indices_ajustados):
-            equipo = EQUIPOS[idx]
-            tarea = asyncio.create_task(realizar_consulta(client, equipo, i))
-            tareas.append(tarea)
-            # Pausa de 50ms para evitar la estampida de caché
-            await asyncio.sleep(0.05)
-        
-        await asyncio.gather(*tareas)
+def generar_endpoint(
+    step,
+    distribucion="zipf",
+    zipf_param=1.5,
+    tipos_consulta=None,
+):
+  """Genera endpoints variados (Q1-Q5) según la distribución seleccionada."""
+  if tipos_consulta is None:
+    tipos_consulta = ["q1", "q2", "q3", "q4", "q5"]
 
-async def main():
-    print("Iniciando Generador de Trafico...")
-    start_time = time.time()
-    
-    # --- EXPERIMENTO 1: UNIFORME ---
-    #await generador_uniforme()
-    
-    # --- EXPERIMENTO 2: ZIPF ---
-    
-    await generador_zipf()
-    
-    tiempo_total = time.time() - start_time
-    print(f"\nGeneracion de trafico finalizada en {tiempo_total:.2f} segundos.")
-    print("Revisa los contadores de Hits y Misses en Redis.")
+  # Seleccion del tipo de consulta 
+  q_type = tipos_consulta[step % len(tipos_consulta)]
+
+  # Seleccion de indices segun la distribución solicitada
+  if distribucion == "zipf":
+    idx1 = (np.random.zipf(a=zipf_param) - 1) % len(EQUIPOS)
+    idx2 = (np.random.zipf(a=zipf_param) - 1) % len(EQUIPOS)
+  else:
+    idx1 = np.random.randint(0, len(EQUIPOS))
+    idx2 = np.random.randint(0, len(EQUIPOS))
+
+  # Asegurar que dos equipos no sean identicos para Q3
+  if idx1 == idx2:
+    idx2 = (idx1 + 1) % len(EQUIPOS)
+
+  eq1 = EQUIPOS[idx1]
+  eq2 = EQUIPOS[idx2]
+
+  # Construccion del endpoint 
+  if q_type == "q1":
+    return f"/q1/{eq1}"
+  elif q_type == "q2":
+    return f"/q2/{eq1}"
+  elif q_type == "q3":
+    return f"/q3/{eq1}/{eq2}"
+  elif q_type == "q4":
+    mes = (step % 12) + 1
+    return f"/q4/2024-{mes:02d}-01/2024-{mes:02d}-28"
+  elif q_type == "q5":
+    return "/q5"
+  else:
+    return f"/q1/{eq1}"
+
+
+async def ejecutar_prueba(
+    distribucion="zipf",
+    total_requests=150,
+    zipf_param=1.5,
+    tasa_arribo_delay=0.05,
+    tipos_consulta=None,
+    seed=42,
+):
+  """Ejecuta la simulacion de trafico configurable y reproducible."""
+  if seed is not None:
+    np.random.seed(seed)
+
+  if tipos_consulta is None:
+    tipos_consulta = ["q1", "q2", "q3", "q4", "q5"]
+
+  latencias = []
+  hits = 0
+  misses = 0
+  exitos = 0
+  fallos = 0
+
+  print(
+      f"\n--- Ejecutando Simulación ({distribucion.upper()}) | Consultas:"
+      f" {tipos_consulta} ---"
+  )
+  start_total = time.perf_counter()
+
+  async with httpx.AsyncClient(timeout=15.0) as client:
+    for i in range(1, total_requests + 1):
+      endpoint = generar_endpoint(
+          step=i,
+          distribucion=distribucion,
+          zipf_param=zipf_param,
+          tipos_consulta=tipos_consulta,
+      )
+
+      t0 = time.perf_counter()
+      try:
+        res = await client.get(f"{API_URL}{endpoint}")
+        t1 = time.perf_counter()
+        latencia_ms = (t1 - t0) * 1000
+        latencias.append(latencia_ms)
+
+        if res.status_code == 200:
+          exitos += 1
+          data = res.json()
+          origen = data.get("origen", "")
+
+          if "Hit" in origen:
+            hits += 1
+          else:
+            misses += 1
+
+          print(
+              f"[{i:03d}] {endpoint:<38} | {latencia_ms:>7.2f} ms | Origen:"
+              f" {origen}"
+          )
+        else:
+          fallos += 1
+          print(f"[{i:03d}] {endpoint:<38} | HTTP Error {res.status_code}")
+
+      except Exception as e:
+        fallos += 1
+        print(f"[{i:03d}] {endpoint:<38} | Error: {e}")
+
+      await asyncio.sleep(tasa_arribo_delay)
+
+  total_time = time.perf_counter() - start_total
+  qps = total_requests / total_time
+  hit_rate = (hits / total_requests) * 100 if total_requests > 0 else 0.0
+  evicted_keys, expired_keys = obtener_metricas_redis()
+  eviction_rate = (evicted_keys / total_requests) * 100 if total_requests > 0 else 0.0
+
+  print("\n================================================================")
+  print(" RESUMEN DE MÉTRICAS DE RENDIMIENTO (GENERADOR DE TRÁFICO)")
+  print("================================================================")
+  print(f" Distribución Evaluada : {distribucion.upper()}")
+  print(f" Consultas Evaluadas   : {tipos_consulta}")
+  print(
+      f" Solicitudes Totales   : {total_requests} (Éxito: {exitos}, Fallos:"
+      f" {fallos})"
+  )
+  print(f" Cache Hits            : {hits}")
+  print(f" Cache Misses          : {misses}")
+  print(f" Hit Rate (%)          : {hit_rate:.2f}%")
+  print(f" Claves Evictadas (LRU): {evicted_keys}")
+  print(f" Claves Expiradas (TTL): {expired_keys}")
+  print(f" Tasa de Evicción (%)  : {eviction_rate:.2f}%")
+  print(f" Tiempo Total Prueba   : {total_time:.2f} segundos")
+  print(f" Throughput (QPS/RPS)  : {qps:.2f} req/seg")
+  print(
+      f" Latencia Mínima       : {min(latencias):.2f} ms"
+      if latencias
+      else "N/A"
+  )
+  print(
+      f" Latencia Promedio     : {np.mean(latencias):.2f} ms"
+      if latencias
+      else "N/A"
+  )
+  print(
+      f" Latencia p50 (Mediana): {np.percentile(latencias, 50):.2f} ms"
+      if latencias
+      else "N/A"
+  )
+  print(
+      f" Latencia p95          : {np.percentile(latencias, 95):.2f} ms"
+      if latencias
+      else "N/A"
+  )
+  print(
+      f" Latencia Máxima       : {max(latencias):.2f} ms"
+      if latencias
+      else "N/A"
+  )
+  print("================================================================\n")
+
 
 if __name__ == "__main__":
-    # Necesario en Windows para evitar un error conocido con asyncio
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    asyncio.run(main())
+  
+
+  #Prueba de capacidad con todas las consultas Q1-Q5:
+  asyncio.run(
+
+      ejecutar_prueba(
+          distribucion="zipf",
+          total_requests=30000,
+          tipos_consulta=["q1", "q2", "q3", "q4", "q5"],
+          tasa_arribo_delay=0.03,
+      )
+  )
+#para 1 sola consulta q1  
+# asyncio.run(ejecutar_prueba(distribucion="uniforme", total_requests=100, tipos_consulta=["q1"]))
