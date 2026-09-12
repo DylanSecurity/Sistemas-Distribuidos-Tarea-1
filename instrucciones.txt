@@ -1,0 +1,67 @@
+1. GESTIÓN DEL ENTORNO DOCKER COMPOSE
+--------------------------------------------------------------------------------
+# Iniciar todo el sistema desde cero (compilando e iniciando en segundo plano):
+docker compose up -d --build
+
+# Verificar el estado de los contenedores en ejecución:
+docker ps
+
+# Detener y eliminar el entorno borrando volumenes persistentes:
+docker compose down -v
+
+
+2. CONFIGURACIÓN DE LÍMITES DE MEMORIA EN REDIS (MAXMEMORY)
+--------------------------------------------------------------------------------
+# Asignar límite de 2 MB (Escenario de Alta Presión de Memoria y Evicciones):
+docker exec tarea1sistemasdistribuidos-redis-1 redis-cli config set maxmemory 2mb
+
+# Asignar límite de 5 MB:
+docker exec tarea1sistemasdistribuidos-redis-1 redis-cli config set maxmemory 5mb
+
+# Asignar límite de 10 MB (Escenario Sin Evicciones / Capacidad Suficiente):
+docker exec tarea1sistemasdistribuidos-redis-1 redis-cli config set maxmemory 10mb
+
+# Verificar el valor actual de maxmemory configurado (en bytes):
+docker exec tarea1sistemasdistribuidos-redis-1 redis-cli config get maxmemory
+
+
+3. LIMPIEZA Y RESETEO DE ESTADÍSTICAS DE REDIS
+--------------------------------------------------------------------------------
+# Borrar todas las llaves almacenadas en la memoria caché:
+docker exec tarea1sistemasdistribuidos-redis-1 redis-cli flushall
+
+# Reiniciar los contadores estadísticos de Redis (hits, misses, evictions, expired):
+docker exec tarea1sistemasdistribuidos-redis-1 redis-cli config resetstat
+
+# Verificar que la base de datos esté vacía (debe retornar 0):
+docker exec tarea1sistemasdistribuidos-redis-1 redis-cli dbsize
+
+
+4. EJECUCIÓN DE PRUEBAS DE CARGA (TRAFFIC GENERATOR)
+--------------------------------------------------------------------------------
+# Ejecutar la suite de pruebas con distribución estocástica Zipf (30,000 reqs):
+python traffic_generator.py
+
+
+5. AUDITORÍA Y MONITOREO DE MÉTRICAS CLAVE EN REDIS
+--------------------------------------------------------------------------------
+# Consultar únicamente Hits, Misses, Evicciones por LRU y Expiraciones por TTL:
+docker exec tarea1sistemasdistribuidos-redis-1 redis-cli info stats | Select-String "evicted_keys|expired_keys|keyspace_hits|keyspace_misses"
+
+# Consultar el resumen completo de estadísticas:
+docker exec tarea1sistemasdistribuidos-redis-1 redis-cli info stats
+
+# Consultar uso de memoria en tiempo real:
+docker exec tarea1sistemasdistribuidos-redis-1 redis-cli info memory | Select-String "used_memory_human|maxmemory_human"
+
+
+6. RESOLUCIÓN DE PROBLEMAS Y CONFLICTOS DE PUERTOS
+--------------------------------------------------------------------------------
+# Si el puerto 6379 está ocupado por un contenedor independiente previo:
+docker rm -f redis-local
+
+# Detener todos los contenedores activos en Docker si es necesario:
+docker stop $(docker ps -q)
+
+# Limpiar la pantalla de la terminal antes de grabar la demostración:
+cls
