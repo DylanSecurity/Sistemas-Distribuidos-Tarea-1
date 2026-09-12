@@ -19,7 +19,7 @@ async def fetch_html(url: str) -> str:
         print(f"--> Error conectando a {url}: {e}")
     return ""
 
-# --- Q1: Próximos partidos de un equipo ---
+# --- Q1: Proximos partidos de un equipo ---
 async def obtener_q1_proximos_partidos(equipo: str) -> Dict[str, Any]:
     html = await fetch_html(SOCCERWAY_URL)
     # Si Soccerway responde, se parsea el HTML; de lo contrario, se entrega la estructura esperada
@@ -43,7 +43,7 @@ async def obtener_q1_proximos_partidos(equipo: str) -> Dict[str, Any]:
         ]
     }
 
-# --- Q2: Últimos partidos de un equipo ---
+# --- Q2: ultimos partidos de un equipo ---
 async def obtener_q2_ultimos_partidos(equipo: str) -> Dict[str, Any]:
     equipo_fmt = equipo.replace("-", " ").title()
     return {
@@ -82,7 +82,7 @@ async def obtener_q3_historial(equipo1: str, equipo2: str) -> Dict[str, Any]:
         ]
     }
 
-# --- Q4: Partidos de un periodo o fecha ---
+# --- Q4: Partidos de un perioodo o fecha ---
 async def obtener_q4_periodo(fecha_inicio: str, fecha_fin: str) -> Dict[str, Any]:
     return {
         "consulta": "Q4",
