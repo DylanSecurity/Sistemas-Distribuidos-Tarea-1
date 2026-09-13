@@ -1,0 +1,42 @@
+# Entornos y archivos generados por Python
+venv/
+.venv/
+.venv-1/
+.venv-2/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Configuracion local
+.env
+.env.*
+!.env.example
+
+# Material del informe y resultados experimentales
+Resultados_Experimentos.txt
+Tablas_y_Graficos_Experimentos.tex
+Graficos_Experimentos.png
+*.pdf
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc
+
+# Datos locales generados
+data/liga_chile.json
+
+# Archivos del sistema y del editor
+.git/
+.vscode/
+.idea/
+*.code-workspace
+.DS_Store
+Thumbs.db

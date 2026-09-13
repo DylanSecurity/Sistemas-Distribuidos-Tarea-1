@@ -1,0 +1,7 @@
+fastapi==0.109.2
+uvicorn==0.27.1
+redis==5.0.1
+httpx==0.26.0
+beautifulsoup4==4.12.3
+playwright==1.41.2
+numpy>=1.26,<3

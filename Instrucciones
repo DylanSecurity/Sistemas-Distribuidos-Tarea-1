@@ -1,0 +1,21 @@
+GUÍA RÁPIDA DE EVALUACIÓN
+
+La documentación completa está en README.md.
+
+1. Levantar el sistema:
+   docker compose up --build
+
+2. Verificar la API:
+   curl.exe http://localhost:8000/health
+   curl.exe http://localhost:8000/metrics
+
+3. Ejecutar una comparación de tráfico:
+   docker compose exec api python -m app.traffic_generator --distribution uniform --requests 500 --arrival-rate 100 --queries q1,q2,q3 --seed 42
+   docker compose exec api python -m app.traffic_generator --distribution zipf --zipf-alpha 1.5 --requests 500 --arrival-rate 100 --queries q1,q2,q3 --seed 42
+
+4. Cambiar capacidad o política antes de iniciar una nueva corrida:
+   $env:REDIS_MAXMEMORY = "5mb"
+   $env:REDIS_MAXMEMORY_POLICY = "allkeys-lfu"
+   docker compose up --build
+
+Usa únicamente docker compose para este proyecto. No ejecutes comandos que detengan o eliminen todos los contenedores del equipo.

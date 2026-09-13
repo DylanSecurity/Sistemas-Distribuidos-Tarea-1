@@ -1,18 +1,31 @@
-version: '3.8'
-
 services:
   api:
-    build: .
+    build:
+      context: .
+      dockerfile: dockerfile
     ports:
       - "8000:8000"
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     environment:
-      - REDIS_HOST=redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CACHE_TTL_Q1: ${CACHE_TTL_Q1:-300}
+      CACHE_TTL_Q2: ${CACHE_TTL_Q2:-3600}
+      CACHE_TTL_Q3: ${CACHE_TTL_Q3:-3600}
+      CACHE_TTL_Q4: ${CACHE_TTL_Q4:-1800}
+      CACHE_TTL_Q5: ${CACHE_TTL_Q5:-180}
+      SCRAPER_TIMEOUT_SECONDS: ${SCRAPER_TIMEOUT_SECONDS:-20}
 
   redis:
-    image: redis:alpine
-    ports:
-      - "6379:6379"
-    # Agregamos esta linea para controlar la memoria:
-    command: redis-server --maxmemory 2mb --maxmemory-policy allkeys-lru
+    image: redis:7-alpine
+    command: >-
+      redis-server --save "" --appendonly no
+      --maxmemory ${REDIS_MAXMEMORY:-2mb}
+      --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
