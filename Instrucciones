@@ -1,21 +1,94 @@
-GUÍA RÁPIDA DE EVALUACIÓN
+1. LEVANTAR Y VERIFICAR LA API
 
-La documentación completa está en README.md.
-
-1. Levantar el sistema:
-   docker compose up --build
-
-2. Verificar la API:
+   docker compose up -d --build
    curl.exe http://localhost:8000/health
+
+   Si health responde con "status":"ok", la API y Redis estan listos.
+
+2. CONSULTAS REALES A SOCCERWAY (Q1 A Q5)
+
+   Antes de mostrar las consultas, limpia la cache para que la primera llamada
+   obtenga los datos desde Soccerway:
+
+   docker exec tarea1sistemasdistribuidos-redis-1 redis-cli FLUSHDB
+   docker exec tarea1sistemasdistribuidos-redis-1 redis-cli CONFIG RESETSTAT
+
+   curl.exe http://localhost:8000/q1/colo-colo
+   curl.exe http://localhost:8000/q2/everton
+   curl.exe http://localhost:8000/q3/colo-colo/universidad-de-chile
+   curl.exe http://localhost:8000/q4/2026-08-01/2026-08-31
+   curl.exe http://localhost:8000/q5
+
+   Q1: proximos partidos de un equipo.
+   Q2: ultimos resultados de un equipo.
+   Q3: historial entre dos equipos.
+   Q4: partidos de un periodo.
+   Q5: tabla de posiciones.
+
+3. MOSTRAR CACHE ASIDE Y METRICAS
+
+   Limpia Redis y ejecuta dos veces la misma consulta. La primera es cache miss
+   y la segunda debe ser cache hit.
+
+   docker exec tarea1sistemasdistribuidos-redis-1 redis-cli FLUSHDB
+   docker exec tarea1sistemasdistribuidos-redis-1 redis-cli CONFIG RESETSTAT
+   curl.exe http://localhost:8000/q2/everton
+   curl.exe http://localhost:8000/q2/everton
    curl.exe http://localhost:8000/metrics
 
-3. Ejecutar una comparación de tráfico:
-   docker compose exec api python -m app.traffic_generator --distribution uniform --requests 500 --arrival-rate 100 --queries q1,q2,q3 --seed 42
-   docker compose exec api python -m app.traffic_generator --distribution zipf --zipf-alpha 1.5 --requests 500 --arrival-rate 100 --queries q1,q2,q3 --seed 42
+4. TRAFICO UNIFORME Y ZIPF
 
-4. Cambiar capacidad o política antes de iniciar una nueva corrida:
-   $env:REDIS_MAXMEMORY = "5mb"
-   $env:REDIS_MAXMEMORY_POLICY = "allkeys-lfu"
-   docker compose up --build
+   Ejecuta una corrida a la vez. El resultado final muestra total de solicitudes,
+   hit rate, p50, p95, evicciones y expiraciones.
 
-Usa únicamente docker compose para este proyecto. No ejecutes comandos que detengan o eliminen todos los contenedores del equipo.
+   docker exec tarea1sistemasdistribuidos-api-1 python app/traffic_generator.py --distribution uniform --requests 20 --arrival-rate 5 --queries q1,q2 --seed 42 --verbose
+   curl.exe http://localhost:8000/metrics
+
+   docker exec tarea1sistemasdistribuidos-api-1 python app/traffic_generator.py --distribution zipf --zipf-alpha 1.1 --requests 20 --arrival-rate 5 --queries q1,q2 --seed 42 --verbose
+   curl.exe http://localhost:8000/metrics
+
+
+
+5. CAMBIAR POLITICA Y TAMANO DE CACHE
+
+   Para cada nueva corrida: configura la politica y el tamano, limpia la cache,
+   reinicia las estadisticas y ejecuta el simulador otra vez.
+
+   docker exec tarea1sistemasdistribuidos-redis-1 redis-cli CONFIG SET maxmemory-policy allkeys-lru
+   docker exec tarea1sistemasdistribuidos-redis-1 redis-cli CONFIG SET maxmemory 2mb
+   docker exec tarea1sistemasdistribuidos-redis-1 redis-cli FLUSHDB
+   docker exec tarea1sistemasdistribuidos-redis-1 redis-cli CONFIG RESETSTAT
+   docker exec tarea1sistemasdistribuidos-redis-1 redis-cli CONFIG GET maxmemory
+   docker exec tarea1sistemasdistribuidos-redis-1 redis-cli CONFIG GET maxmemory-policy
+
+   Repite cambiando solo el ultimo valor:
+
+   docker exec tarea1sistemasdistribuidos-redis-1 redis-cli CONFIG SET maxmemory 5mb
+   docker exec tarea1sistemasdistribuidos-redis-1 redis-cli CONFIG SET maxmemory 10mb
+
+   Para comparar LFU, cambia solo la politica:
+
+   docker exec tarea1sistemasdistribuidos-redis-1 redis-cli CONFIG SET maxmemory-policy allkeys-lfu
+
+   Para revisar evicciones despues del trafico:
+
+   docker exec tarea1sistemasdistribuidos-redis-1 redis-cli INFO stats
+   curl.exe http://localhost:8000/metrics
+
+6. PRUEBA DE TTL
+
+   Este ejemplo cambia temporalmente Q2 a 5 segundos. Se limpia la cache, se
+   consulta una vez, se espera su vencimiento y se consulta otra vez.
+
+   curl.exe -X POST "http://localhost:8000/experiments/ttl?query=q2&seconds=5"
+   docker exec tarea1sistemasdistribuidos-redis-1 redis-cli FLUSHDB
+   docker exec tarea1sistemasdistribuidos-redis-1 redis-cli CONFIG RESETSTAT
+   curl.exe http://localhost:8000/q2/everton
+   Start-Sleep -Seconds 6
+   curl.exe http://localhost:8000/q2/everton
+   curl.exe http://localhost:8000/metrics
+
+   Al terminar, restaura el TTL original de Q2:
+
+   curl.exe -X POST "http://localhost:8000/experiments/ttl?query=q2&seconds=3600"
+
